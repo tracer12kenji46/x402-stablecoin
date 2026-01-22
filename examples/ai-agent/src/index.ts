@@ -6,11 +6,16 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
-import type { MessageParam, ContentBlock, TextBlock, Message } from '@anthropic-ai/sdk/resources/messages';
 
 // ============================================
-// Tool Type Definitions for v0.20.x SDK
+// Type Definitions for v0.20.x SDK
 // ============================================
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+type MessageParam = any;
+type ContentBlock = any;
+type Message = any;
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
 interface Tool {
   name: string;
@@ -27,6 +32,11 @@ interface ToolUseBlock {
   id: string;
   name: string;
   input: unknown;
+}
+
+interface TextBlock {
+  type: 'text';
+  text: string;
 }
 
 // ============================================
@@ -183,12 +193,12 @@ async function runAgent() {
     model: 'claude-sonnet-4-20250514',
     max_tokens: 4096,
     messages,
-  }) as Message;
+  });
 
   // Agent loop - handle tool calls
-  while ((response.stop_reason as string) === 'tool_use') {
+  while (response.stop_reason === 'tool_use') {
     const toolUse = response.content.find(
-      (block: ContentBlock): block is ToolUseBlock => (block as ToolUseBlock).type === 'tool_use'
+      (block: ContentBlock): boolean => block.type === 'tool_use'
     ) as ToolUseBlock | undefined;
 
     if (!toolUse) break;
@@ -216,13 +226,13 @@ async function runAgent() {
       model: 'claude-sonnet-4-20250514',
       max_tokens: 4096,
       messages,
-    }) as Message;
+    });
   }
 
   // Print final response
   const textBlock = response.content.find(
-    (block: ContentBlock): block is TextBlock => block.type === 'text'
-  );
+    (block: ContentBlock): boolean => block.type === 'text'
+  ) as TextBlock | undefined;
 
   console.log('\n📋 Agent Report:\n');
   console.log(textBlock?.text || 'No response');

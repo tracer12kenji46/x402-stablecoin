@@ -1,11 +1,10 @@
 /**
- * Payment History Storage
+ * Payment History Storage (In-Memory)
  * 
- * SQLite-based storage for tracked payments and yield history.
- * Uses better-sqlite3 for synchronous, fast database operations.
+ * In-memory storage for tracked payments and yield history.
+ * For production, replace with a persistent database.
  */
 
-import Database from 'better-sqlite3';
 import type { 
   TrackedPayment, 
   YieldHistoryPoint, 
@@ -13,224 +12,99 @@ import type {
 } from '../types.js';
 
 /**
- * Payment Storage using SQLite
+ * Payment Storage using In-Memory Maps
  */
 export class PaymentStorage {
-  private db: Database.Database;
+  private payments: Map<string, TrackedPayment> = new Map();
+  private paymentsByAddress: Map<string, string[]> = new Map();
+  private yieldHistory: Map<string, YieldHistoryPoint[]> = new Map();
+  private rebaseEvents: RebaseEvent[] = [];
+  private globalState: Map<string, { value: string; updatedAt: number }> = new Map();
 
-  constructor(dbPath: string = './yield-tracker.db') {
-    this.db = new Database(dbPath);
-    this.initialize();
-  }
-
-  /**
-   * Initialize database tables
-   */
-  private initialize() {
-    // Payments table
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS payments (
-        id TEXT PRIMARY KEY,
-        address TEXT NOT NULL,
-        initial_amount TEXT NOT NULL,
-        initial_credits TEXT NOT NULL,
-        initial_credits_per_token TEXT NOT NULL,
-        tx_hash TEXT NOT NULL,
-        block_number INTEGER NOT NULL,
-        timestamp INTEGER NOT NULL,
-        description TEXT,
-        is_rebasing INTEGER NOT NULL DEFAULT 1
-      );
-      
-      CREATE INDEX IF NOT EXISTS idx_payments_address ON payments(address);
-      CREATE INDEX IF NOT EXISTS idx_payments_timestamp ON payments(timestamp);
-    `);
-
-    // Yield history table
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS yield_history (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        address TEXT NOT NULL,
-        timestamp INTEGER NOT NULL,
-        balance TEXT NOT NULL,
-        credits_per_token TEXT NOT NULL,
-        cumulative_yield TEXT NOT NULL,
-        block_number INTEGER NOT NULL
-      );
-      
-      CREATE INDEX IF NOT EXISTS idx_yield_history_address ON yield_history(address);
-      CREATE INDEX IF NOT EXISTS idx_yield_history_timestamp ON yield_history(timestamp);
-    `);
-
-    // Rebase events table
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS rebase_events (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        block_number INTEGER NOT NULL UNIQUE,
-        tx_hash TEXT NOT NULL,
-        timestamp INTEGER NOT NULL,
-        previous_credits_per_token TEXT NOT NULL,
-        new_credits_per_token TEXT NOT NULL,
-        rebase_percentage TEXT NOT NULL,
-        estimated_apy TEXT NOT NULL
-      );
-      
-      CREATE INDEX IF NOT EXISTS idx_rebase_events_timestamp ON rebase_events(timestamp);
-    `);
-
-    // Global state table
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS global_state (
-        key TEXT PRIMARY KEY,
-        value TEXT NOT NULL,
-        updated_at INTEGER NOT NULL
-      );
-    `);
+  constructor(_dbPath?: string) {
+    // dbPath ignored for in-memory storage
   }
 
   /**
    * Add a tracked payment
    */
   addPayment(payment: TrackedPayment): void {
-    const stmt = this.db.prepare(`
-      INSERT INTO payments (
-        id, address, initial_amount, initial_credits, initial_credits_per_token,
-        tx_hash, block_number, timestamp, description, is_rebasing
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    stmt.run(
-      payment.id,
-      payment.address.toLowerCase(),
-      payment.initialAmount,
-      payment.initialCredits,
-      payment.initialCreditsPerToken,
-      payment.txHash,
-      payment.blockNumber,
-      payment.timestamp,
-      payment.description || null,
-      payment.isRebasing ? 1 : 0
-    );
+    const address = payment.address.toLowerCase();
+    this.payments.set(payment.id, payment);
+    
+    const addressPayments = this.paymentsByAddress.get(address) || [];
+    addressPayments.push(payment.id);
+    this.paymentsByAddress.set(address, addressPayments);
   }
 
   /**
    * Get payment by ID
    */
   getPayment(id: string): TrackedPayment | null {
-    const stmt = this.db.prepare('SELECT * FROM payments WHERE id = ?');
-    const row = stmt.get(id) as any;
-    return row ? this.rowToPayment(row) : null;
+    return this.payments.get(id) || null;
   }
 
   /**
    * Get all payments for an address
    */
   getPaymentsByAddress(address: string): TrackedPayment[] {
-    const stmt = this.db.prepare('SELECT * FROM payments WHERE address = ? ORDER BY timestamp DESC');
-    const rows = stmt.all(address.toLowerCase()) as any[];
-    return rows.map(this.rowToPayment);
+    const ids = this.paymentsByAddress.get(address.toLowerCase()) || [];
+    return ids
+      .map(id => this.payments.get(id))
+      .filter((p): p is TrackedPayment => p !== undefined)
+      .sort((a, b) => b.timestamp - a.timestamp);
   }
 
   /**
    * Get all tracked addresses
    */
   getTrackedAddresses(): string[] {
-    const stmt = this.db.prepare('SELECT DISTINCT address FROM payments');
-    const rows = stmt.all() as any[];
-    return rows.map(row => row.address);
-  }
-
-  /**
-   * Convert database row to TrackedPayment
-   */
-  private rowToPayment(row: any): TrackedPayment {
-    return {
-      id: row.id,
-      address: row.address as `0x${string}`,
-      initialAmount: row.initial_amount,
-      initialCredits: row.initial_credits,
-      initialCreditsPerToken: row.initial_credits_per_token,
-      txHash: row.tx_hash,
-      blockNumber: row.block_number,
-      timestamp: row.timestamp,
-      description: row.description || undefined,
-      isRebasing: row.is_rebasing === 1,
-    };
+    return Array.from(this.paymentsByAddress.keys());
   }
 
   /**
    * Add yield history point
    */
   addYieldHistory(point: YieldHistoryPoint & { address: string }): void {
-    const stmt = this.db.prepare(`
-      INSERT INTO yield_history (
-        address, timestamp, balance, credits_per_token, cumulative_yield, block_number
-      ) VALUES (?, ?, ?, ?, ?, ?)
-    `);
-
-    stmt.run(
-      point.address.toLowerCase(),
-      point.timestamp,
-      point.balance,
-      point.creditsPerToken,
-      point.cumulativeYield,
-      point.blockNumber
-    );
+    const address = point.address.toLowerCase();
+    const history = this.yieldHistory.get(address) || [];
+    history.push({
+      timestamp: point.timestamp,
+      balance: point.balance,
+      creditsPerToken: point.creditsPerToken,
+      cumulativeYield: point.cumulativeYield,
+      blockNumber: point.blockNumber,
+    });
+    this.yieldHistory.set(address, history);
   }
 
   /**
    * Get yield history for an address
    */
   getYieldHistory(address: string, limit: number = 100): YieldHistoryPoint[] {
-    const stmt = this.db.prepare(`
-      SELECT timestamp, balance, credits_per_token, cumulative_yield, block_number
-      FROM yield_history
-      WHERE address = ?
-      ORDER BY timestamp DESC
-      LIMIT ?
-    `);
-
-    const rows = stmt.all(address.toLowerCase(), limit) as any[];
-    return rows.map(row => ({
-      timestamp: row.timestamp,
-      balance: row.balance,
-      creditsPerToken: row.credits_per_token,
-      cumulativeYield: row.cumulative_yield,
-      blockNumber: row.block_number,
-    }));
+    const history = this.yieldHistory.get(address.toLowerCase()) || [];
+    return history
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .slice(0, limit);
   }
 
   /**
    * Add rebase event
    */
   addRebaseEvent(event: RebaseEvent): void {
-    const stmt = this.db.prepare(`
-      INSERT OR IGNORE INTO rebase_events (
-        block_number, tx_hash, timestamp, previous_credits_per_token,
-        new_credits_per_token, rebase_percentage, estimated_apy
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    stmt.run(
-      event.blockNumber,
-      event.txHash,
-      event.timestamp,
-      event.previousCreditsPerToken,
-      event.newCreditsPerToken,
-      event.rebasePercentage,
-      event.estimatedAPY
-    );
+    // Check if already exists
+    const exists = this.rebaseEvents.some(e => e.blockNumber === event.blockNumber);
+    if (!exists) {
+      this.rebaseEvents.push(event);
+      this.rebaseEvents.sort((a, b) => b.blockNumber - a.blockNumber);
+    }
   }
 
   /**
    * Get latest rebase event
    */
   getLatestRebaseEvent(): RebaseEvent | null {
-    const stmt = this.db.prepare(`
-      SELECT * FROM rebase_events ORDER BY block_number DESC LIMIT 1
-    `);
-    const row = stmt.get() as any;
-    return row ? this.rowToRebaseEvent(row) : null;
+    return this.rebaseEvents[0] || null;
   }
 
   /**
@@ -238,77 +112,49 @@ export class PaymentStorage {
    */
   getRebaseEvents(fromTimestamp: number, toTimestamp?: number, limit: number = 100): RebaseEvent[] {
     const to = toTimestamp || Math.floor(Date.now() / 1000);
-    const stmt = this.db.prepare(`
-      SELECT * FROM rebase_events
-      WHERE timestamp >= ? AND timestamp <= ?
-      ORDER BY timestamp DESC
-      LIMIT ?
-    `);
-
-    const rows = stmt.all(fromTimestamp, to, limit) as any[];
-    return rows.map(this.rowToRebaseEvent);
+    return this.rebaseEvents
+      .filter(e => e.timestamp >= fromTimestamp && e.timestamp <= to)
+      .slice(0, limit);
   }
 
   /**
    * Get rebase count
    */
   getRebaseCount(): number {
-    const stmt = this.db.prepare('SELECT COUNT(*) as count FROM rebase_events');
-    const row = stmt.get() as any;
-    return row.count;
-  }
-
-  /**
-   * Convert database row to RebaseEvent
-   */
-  private rowToRebaseEvent(row: any): RebaseEvent {
-    return {
-      blockNumber: row.block_number,
-      txHash: row.tx_hash,
-      timestamp: row.timestamp,
-      previousCreditsPerToken: row.previous_credits_per_token,
-      newCreditsPerToken: row.new_credits_per_token,
-      rebasePercentage: row.rebase_percentage,
-      estimatedAPY: row.estimated_apy,
-    };
+    return this.rebaseEvents.length;
   }
 
   /**
    * Set global state value
    */
   setGlobalState(key: string, value: string): void {
-    const stmt = this.db.prepare(`
-      INSERT OR REPLACE INTO global_state (key, value, updated_at)
-      VALUES (?, ?, ?)
-    `);
-    stmt.run(key, value, Math.floor(Date.now() / 1000));
+    this.globalState.set(key, {
+      value,
+      updatedAt: Math.floor(Date.now() / 1000),
+    });
   }
 
   /**
    * Get global state value
    */
   getGlobalState(key: string): string | null {
-    const stmt = this.db.prepare('SELECT value FROM global_state WHERE key = ?');
-    const row = stmt.get(key) as any;
-    return row ? row.value : null;
+    const state = this.globalState.get(key);
+    return state ? state.value : null;
   }
 
   /**
    * Get sum of initial amounts for an address
    */
   getTotalInitialDeposits(address: string): string {
-    const stmt = this.db.prepare(`
-      SELECT initial_amount FROM payments WHERE address = ? AND is_rebasing = 1
-    `);
-    const rows = stmt.all(address.toLowerCase()) as any[];
+    const payments = this.getPaymentsByAddress(address);
     
     let total = 0n;
-    for (const row of rows) {
+    for (const payment of payments) {
+      if (!payment.isRebasing) continue;
       try {
-        // Parse the amount (could be in ETH format "1.5" or wei)
-        const amount = row.initial_amount.includes('.')
-          ? BigInt(Math.floor(parseFloat(row.initial_amount) * 10 ** 18))
-          : BigInt(row.initial_amount);
+        const amount = payment.initialAmount.includes('.')
+          ? BigInt(Math.floor(parseFloat(payment.initialAmount) * 10 ** 18))
+          : BigInt(payment.initialAmount);
         total += amount;
       } catch {
         // Skip invalid amounts
@@ -319,10 +165,21 @@ export class PaymentStorage {
   }
 
   /**
-   * Close database connection
+   * Close storage (no-op for in-memory)
    */
   close(): void {
-    this.db.close();
+    // No-op for in-memory storage
+  }
+
+  /**
+   * Clear all data (useful for testing)
+   */
+  clear(): void {
+    this.payments.clear();
+    this.paymentsByAddress.clear();
+    this.yieldHistory.clear();
+    this.rebaseEvents = [];
+    this.globalState.clear();
   }
 }
 

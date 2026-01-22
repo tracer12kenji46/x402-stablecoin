@@ -13,8 +13,7 @@
     "declarationMap": true,
     "sourceMap": true,
     "outDir": "./dist",
-    "rootDir": ".",
-    "types": ["node"]
+    "rootDir": "."
   },
   "include": [
     "services/**/*.ts",
