@@ -44,6 +44,9 @@ contract SubscriptionTest is Test {
     event Withdrawn(address indexed subscriber, uint256 amount);
 
     function setUp() public {
+        // Mock USDs - must happen before proxy deployment
+        _mockUSDs();
+
         // Deploy implementation
         subscriptionImpl = new X402Subscription();
 
@@ -51,16 +54,13 @@ contract SubscriptionTest is Test {
         bytes memory initData = abi.encodeWithSelector(X402Subscription.initialize.selector);
         ERC1967Proxy proxy = new ERC1967Proxy(address(subscriptionImpl), initData);
         subscription = X402Subscription(address(proxy));
-
-        // Mock USDs
-        _mockUSDs();
     }
 
     function _mockUSDs() internal {
-        // Mock rebaseOptIn
+        // Mock rebaseOptIn - use explicit selector for no-params version
         vm.mockCall(
             USDS,
-            abi.encodeWithSelector(IUSDs.rebaseOptIn.selector),
+            abi.encodeWithSelector(bytes4(keccak256("rebaseOptIn()"))),
             abi.encode()
         );
 

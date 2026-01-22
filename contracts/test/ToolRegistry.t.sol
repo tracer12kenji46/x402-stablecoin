@@ -45,6 +45,13 @@ contract ToolRegistryTest is Test {
         // Uncomment for integration tests:
         // vm.createSelectFork(vm.envString("ARBITRUM_RPC_URL"));
 
+        // Mock USDs for unit tests - must happen before proxy deployment
+        vm.mockCall(
+            USDS,
+            abi.encodeWithSelector(bytes4(keccak256("rebaseOptIn()"))),
+            abi.encode()
+        );
+
         // Deploy implementation
         registryImpl = new ToolRegistry();
 
@@ -56,13 +63,6 @@ contract ToolRegistryTest is Test {
         );
         ERC1967Proxy proxy = new ERC1967Proxy(address(registryImpl), initData);
         registry = ToolRegistry(address(proxy));
-
-        // Mock USDs for unit tests
-        vm.mockCall(
-            USDS,
-            abi.encodeWithSelector(IUSDs.rebaseOptIn.selector),
-            abi.encode()
-        );
     }
 
     /*//////////////////////////////////////////////////////////////

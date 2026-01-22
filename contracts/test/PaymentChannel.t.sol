@@ -46,6 +46,13 @@ contract PaymentChannelTest is Test {
         sender = vm.addr(senderPrivateKey);
         recipient = vm.addr(recipientPrivateKey);
 
+        // Mock USDs rebaseOptIn - must happen before proxy deployment
+        vm.mockCall(
+            USDS,
+            abi.encodeWithSelector(bytes4(keccak256("rebaseOptIn()"))),
+            abi.encode()
+        );
+
         // Deploy implementation
         channelImpl = new X402PaymentChannel();
 
@@ -53,13 +60,6 @@ contract PaymentChannelTest is Test {
         bytes memory initData = abi.encodeWithSelector(X402PaymentChannel.initialize.selector);
         ERC1967Proxy proxy = new ERC1967Proxy(address(channelImpl), initData);
         channel = X402PaymentChannel(address(proxy));
-
-        // Mock USDs rebaseOptIn
-        vm.mockCall(
-            USDS,
-            abi.encodeWithSelector(IUSDs.rebaseOptIn.selector),
-            abi.encode()
-        );
 
         // Fund sender
         vm.deal(sender, 100 ether);

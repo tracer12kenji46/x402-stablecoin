@@ -41,9 +41,10 @@ contract CreditSystemTest is Test {
 
     function setUp() public {
         // Mock USDs
+        // Use explicit selector for rebaseOptIn() - no params version
         vm.mockCall(
             USDS,
-            abi.encodeWithSelector(IUSDs.rebaseOptIn.selector),
+            abi.encodeWithSelector(bytes4(keccak256("rebaseOptIn()"))),
             abi.encode()
         );
 

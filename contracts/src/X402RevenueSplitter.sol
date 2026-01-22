@@ -115,7 +115,7 @@ contract X402RevenueSplitter is Ownable, ReentrancyGuard {
 
         // Opt into USDs rebase for auto-yield
         if (_usds != address(0)) {
-            try IUSDs(_usds).optInRebase() {} catch {}
+            try IUSDs(_usds).rebaseOptIn() {} catch {}
         }
     }
 
