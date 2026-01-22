@@ -4,8 +4,9 @@
  * @license MIT
  */
 
-import type { Address, PublicClient, WalletClient, Hash } from 'viem';
+import type { Address, PublicClient, WalletClient, Hash, Chain } from 'viem';
 import { formatUnits, parseUnits } from 'viem';
+import { arbitrum } from 'viem/chains';
 import { REVENUE_SPLITTER_ABI, ERC20_ABI } from '../constants';
 import type { ToolRegistration, RevenueSplit, ToolRevenueStats } from '../types';
 import { X402Error, X402ErrorCode } from '../types';
@@ -15,8 +16,10 @@ import { X402Error, X402ErrorCode } from '../types';
  * Handles automated revenue splitting between developers and platform
  */
 export class RevenueSplitter {
+  private readonly chain: Chain = arbitrum;
+
   constructor(
-    private readonly address: Address,
+    private readonly contractAddress: Address,
     private readonly publicClient: PublicClient,
     private readonly walletClient?: WalletClient
   ) {}
@@ -31,7 +34,7 @@ export class RevenueSplitter {
   async getToolInfo(toolName: string): Promise<ToolRevenueStats | null> {
     try {
       const result = await this.publicClient.readContract({
-        address: this.address,
+        address: this.contractAddress,
         abi: REVENUE_SPLITTER_ABI,
         functionName: 'getToolInfo',
         args: [toolName],
@@ -61,7 +64,7 @@ export class RevenueSplitter {
    */
   async getDeveloperEarnings(developer: Address): Promise<string> {
     const earnings = await this.publicClient.readContract({
-      address: this.address,
+      address: this.contractAddress,
       abi: REVENUE_SPLITTER_ABI,
       functionName: 'developerEarnings',
       args: [developer],
@@ -75,7 +78,7 @@ export class RevenueSplitter {
    */
   async getPlatformWallet(): Promise<Address> {
     return await this.publicClient.readContract({
-      address: this.address,
+      address: this.contractAddress,
       abi: REVENUE_SPLITTER_ABI,
       functionName: 'platformWallet',
       args: [],
@@ -87,7 +90,7 @@ export class RevenueSplitter {
    */
   async getDefaultPlatformFee(): Promise<number> {
     const feeBps = await this.publicClient.readContract({
-      address: this.address,
+      address: this.contractAddress,
       abi: REVENUE_SPLITTER_ABI,
       functionName: 'defaultPlatformFeeBps',
       args: [],
@@ -143,10 +146,12 @@ export class RevenueSplitter {
     const amountParsed = parseUnits(amount, decimals);
 
     // Check and approve if needed
-    await this.ensureAllowance(tokenAddress, amountParsed, decimals);
+    await this.ensureAllowance(tokenAddress, amountParsed);
 
     const hash = await this.walletClient!.writeContract({
-      address: this.address,
+      account: this.walletClient!.account!,
+      chain: this.chain,
+      address: this.contractAddress,
       abi: REVENUE_SPLITTER_ABI,
       functionName: 'processPayment',
       args: [toolName, tokenAddress, amountParsed],
@@ -179,10 +184,12 @@ export class RevenueSplitter {
     const totalAmount = amountsParsed.reduce((sum, a) => sum + a, BigInt(0));
 
     // Check and approve if needed
-    await this.ensureAllowance(tokenAddress, totalAmount, decimals);
+    await this.ensureAllowance(tokenAddress, totalAmount);
 
     const hash = await this.walletClient!.writeContract({
-      address: this.address,
+      account: this.walletClient!.account!,
+      chain: this.chain,
+      address: this.contractAddress,
       abi: REVENUE_SPLITTER_ABI,
       functionName: 'batchProcessPayments',
       args: [toolNames, tokenAddress, amountsParsed],
@@ -200,7 +207,9 @@ export class RevenueSplitter {
     this.requireWallet();
 
     const hash = await this.walletClient!.writeContract({
-      address: this.address,
+      account: this.walletClient!.account!,
+      chain: this.chain,
+      address: this.contractAddress,
       abi: REVENUE_SPLITTER_ABI,
       functionName: 'registerTool',
       args: [registration.name, registration.developer, BigInt(registration.platformFeeBps)],
@@ -220,8 +229,7 @@ export class RevenueSplitter {
    */
   private async ensureAllowance(
     tokenAddress: Address,
-    amount: bigint,
-    decimals: number
+    amount: bigint
   ): Promise<void> {
     if (!this.walletClient?.account) {
       return;
@@ -231,15 +239,17 @@ export class RevenueSplitter {
       address: tokenAddress,
       abi: ERC20_ABI,
       functionName: 'allowance',
-      args: [this.walletClient.account.address, this.address],
+      args: [this.walletClient.account.address, this.contractAddress],
     }) as bigint;
 
     if (allowance < amount) {
       const approveHash = await this.walletClient.writeContract({
+        account: this.walletClient.account,
+        chain: this.chain,
         address: tokenAddress,
         abi: ERC20_ABI,
         functionName: 'approve',
-        args: [this.address, amount],
+        args: [this.contractAddress, amount],
       });
       await this.publicClient.waitForTransactionReceipt({ hash: approveHash });
     }

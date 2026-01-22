@@ -34,8 +34,6 @@ import type {
   BalanceInfo,
   PaymentEvent,
   PaymentEventListener,
-  ToolRevenueStats,
-  RevenueSplit,
 } from './types';
 import { X402Error, X402ErrorCode } from './types';
 import { NETWORKS, TOKENS, DEFAULT_TOKEN, DEFAULTS } from './constants';
@@ -137,7 +135,7 @@ export class X402Client {
     this.publicClient = createPublicClient({
       chain: viemChain,
       transport: http(rpcUrl, { timeout: this.config.timeout }),
-    });
+    }) as PublicClient;
 
     // Create wallet client if private key provided
     if (options.privateKey) {

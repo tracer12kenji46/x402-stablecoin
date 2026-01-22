@@ -5,10 +5,16 @@
  * X402 payment protocol using Sperax USDs on Arbitrum.
  */
 
-import { createPublicClient, createWalletClient, http, formatUnits, parseUnits, type Address, type Hex } from 'viem';
-import { arbitrum, arbitrumSepolia } from 'viem/chains';
-import { privateKeyToAccount } from 'viem/accounts';
-import { SperaxClient, type BalanceWithYield } from '../services/sperax';
+import { ethers } from 'ethers';
+import { SperaxClient, SPERAX_ADDRESSES } from '../services/sperax';
+
+// Balance with yield info
+export interface BalanceWithYield {
+  balance: string;
+  yieldEarned: string;
+  apy: string;
+  isRebasing: boolean;
+}
 
 // ============================================
 // Tool Definitions (MCP Schema)
@@ -129,38 +135,47 @@ export const speraxToolDefinitions = {
 };
 
 // ============================================
+// RPC URLs
+// ============================================
+
+const RPC_URLS: Record<string, string> = {
+  mainnet: 'https://arb1.arbitrum.io/rpc',
+  sepolia: 'https://sepolia-rollup.arbitrum.io/rpc',
+  bsc: 'https://bsc-dataseed1.binance.org'  // BSC for Sperax
+};
+
+// ============================================
 // Tool Handler Class
 // ============================================
 
 export interface SperaxToolConfig {
   privateKey?: string;
   rpcUrl?: string;
-  network?: 'mainnet' | 'sepolia';
+  network?: 'mainnet' | 'sepolia' | 'bsc';
   facilitatorUrl?: string;
 }
 
 export class SperaxX402Tools {
   private speraxClient: SperaxClient;
+  private provider: ethers.JsonRpcProvider;
+  private wallet?: ethers.Wallet;
   private config: SperaxToolConfig;
-  private account?: ReturnType<typeof privateKeyToAccount>;
 
   constructor(config: SperaxToolConfig = {}) {
     this.config = {
-      network: 'sepolia',
+      network: 'bsc',  // Sperax is on BSC
       facilitatorUrl: 'http://localhost:3002',
       ...config
     };
 
-    const chain = this.config.network === 'mainnet' ? arbitrum : arbitrumSepolia;
-    const rpcUrl = this.config.rpcUrl || chain.rpcUrls.default.http[0];
-
-    this.speraxClient = new SperaxClient({
-      rpcUrl,
-      chainId: chain.id
-    });
+    const rpcUrl = this.config.rpcUrl || RPC_URLS[this.config.network || 'bsc'];
+    this.provider = new ethers.JsonRpcProvider(rpcUrl);
 
     if (this.config.privateKey) {
-      this.account = privateKeyToAccount(this.config.privateKey as Hex);
+      this.wallet = new ethers.Wallet(this.config.privateKey, this.provider);
+      this.speraxClient = new SperaxClient(this.provider, this.wallet);
+    } else {
+      this.speraxClient = new SperaxClient(this.provider);
     }
   }
 
@@ -209,7 +224,15 @@ export class SperaxX402Tools {
    * Check USDs balance and yield for an address
    */
   async checkBalance(address: string): Promise<BalanceWithYield> {
-    return this.speraxClient.getBalanceWithYield(address as Address);
+    const position = await this.speraxClient.getUserPosition(address);
+    const apy = await this.speraxClient.getCurrentAPY();
+    
+    return {
+      balance: position.usDsBalance,
+      yieldEarned: position.estimatedYield,
+      apy: apy,
+      isRebasing: position.isRebasing
+    };
   }
 
   /**
@@ -221,18 +244,16 @@ export class SperaxX402Tools {
     gasless: boolean = false,
     memo?: string
   ): Promise<{ txHash: string; status: string; memo?: string }> {
-    if (!this.account) {
+    if (!this.wallet) {
       throw new Error('No private key configured. Cannot make payments.');
     }
-
-    const amountWei = parseUnits(amount, 18);
 
     if (gasless) {
       // Create and submit gasless authorization
       const auth = await this.createPaymentAuthorization(recipient, amount);
       
       // Submit to facilitator
-      const response = await fetch(`${this.config.facilitatorUrl}/settle`, {
+      const response = await globalThis.fetch(`${this.config.facilitatorUrl}/settle`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -245,7 +266,7 @@ export class SperaxX402Tools {
         throw new Error(`Facilitator error: ${await response.text()}`);
       }
 
-      const result = await response.json();
+      const result = await response.json() as { transactionHash: string };
       return {
         txHash: result.transactionHash,
         status: 'settled',
@@ -253,12 +274,7 @@ export class SperaxX402Tools {
       };
     } else {
       // Standard transfer
-      const txHash = await this.speraxClient.transfer(
-        this.account,
-        recipient as Address,
-        amountWei
-      );
-
+      const txHash = await this.speraxClient.transferUSDs(recipient, amount);
       return {
         txHash,
         status: 'confirmed',
@@ -269,6 +285,7 @@ export class SperaxX402Tools {
 
   /**
    * Create EIP-3009 payment authorization
+   * Note: This creates a signature for gasless transfer
    */
   async createPaymentAuthorization(
     recipient: string,
@@ -283,27 +300,48 @@ export class SperaxX402Tools {
     nonce: string;
     signature: string;
   }> {
-    if (!this.account) {
+    if (!this.wallet) {
       throw new Error('No private key configured. Cannot create authorization.');
     }
 
-    const amountWei = parseUnits(amount, 18);
+    const amountWei = ethers.parseEther(amount);
     const now = Math.floor(Date.now() / 1000);
     const validAfter = now - 60; // Valid from 1 minute ago
     const validBefore = validUntil || now + 3600; // Valid for 1 hour by default
-    const nonce = `0x${Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('hex')}`;
+    const nonce = ethers.hexlify(ethers.randomBytes(32));
 
-    const signature = await this.speraxClient.signTransferAuthorization(
-      this.account,
-      recipient as Address,
-      amountWei,
-      BigInt(validAfter),
-      BigInt(validBefore),
-      nonce as Hex
-    );
+    // EIP-3009 TypedData
+    const domain = {
+      name: 'USDs',
+      version: '1',
+      chainId: 56, // BSC
+      verifyingContract: SPERAX_ADDRESSES.USDS
+    };
+
+    const types = {
+      TransferWithAuthorization: [
+        { name: 'from', type: 'address' },
+        { name: 'to', type: 'address' },
+        { name: 'value', type: 'uint256' },
+        { name: 'validAfter', type: 'uint256' },
+        { name: 'validBefore', type: 'uint256' },
+        { name: 'nonce', type: 'bytes32' }
+      ]
+    };
+
+    const message = {
+      from: this.wallet.address,
+      to: recipient,
+      value: amountWei,
+      validAfter,
+      validBefore,
+      nonce
+    };
+
+    const signature = await this.wallet.signTypedData(domain, types, message);
 
     return {
-      from: this.account.address,
+      from: this.wallet.address,
       to: recipient,
       value: amountWei.toString(),
       validAfter,
@@ -320,15 +358,16 @@ export class SperaxX402Tools {
     apy: string;
     tvl: string;
     lastRebase: string;
-    rebasingCreditsPerToken: string;
+    collateralRatio: string;
   }> {
     const apy = await this.speraxClient.getCurrentAPY();
+    const vaultInfo = await this.speraxClient.getVaultInfo();
     
     return {
-      apy: `${(apy * 100).toFixed(2)}%`,
-      tvl: 'Query vault for TVL',
+      apy: apy,
+      tvl: `$${vaultInfo.totalCollateralValue} USD`,
       lastRebase: new Date().toISOString(),
-      rebasingCreditsPerToken: 'Query contract'
+      collateralRatio: vaultInfo.collateralRatio
     };
   }
 
@@ -336,7 +375,7 @@ export class SperaxX402Tools {
    * Estimate payment cost
    */
   async estimatePaymentCost(
-    recipient: string,
+    _recipient: string,
     amount: string,
     gasless: boolean = false
   ): Promise<{
@@ -346,8 +385,6 @@ export class SperaxX402Tools {
     totalCost: string;
     savings: string;
   }> {
-    const amountWei = parseUnits(amount, 18);
-
     if (gasless) {
       return {
         paymentAmount: amount,
@@ -358,17 +395,18 @@ export class SperaxX402Tools {
       };
     }
 
-    // Estimate gas for standard transfer (~65,000 gas on Arbitrum)
+    // Estimate gas for standard transfer (~65,000 gas)
     const estimatedGas = 65000n;
-    const gasPrice = 100000000n; // 0.1 gwei on Arbitrum
+    const feeData = await this.provider.getFeeData();
+    const gasPrice = feeData.gasPrice || 5000000000n; // 5 gwei fallback
     const gasCostWei = estimatedGas * gasPrice;
-    const gasCostEth = formatUnits(gasCostWei, 18);
+    const gasCostBnb = ethers.formatEther(gasCostWei);
 
     return {
       paymentAmount: amount,
       estimatedGas: estimatedGas.toString(),
-      estimatedGasCost: `${gasCostEth} ETH`,
-      totalCost: `${amount} USDs + ${gasCostEth} ETH`,
+      estimatedGasCost: `${gasCostBnb} BNB`,
+      totalCost: `${amount} USDs + ${gasCostBnb} BNB`,
       savings: 'Use gasless=true to avoid gas costs'
     };
   }
@@ -385,14 +423,22 @@ export class SperaxX402Tools {
     amount?: string;
   }> {
     try {
-      const response = await fetch(`${this.config.facilitatorUrl}/verify`, {
+      // Try facilitator first
+      const response = await globalThis.fetch(`${this.config.facilitatorUrl}/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ transactionHash })
       });
 
       if (response.ok) {
-        const result = await response.json();
+        const result = await response.json() as {
+          verified: boolean;
+          status: string;
+          blockNumber?: number;
+          from?: string;
+          to?: string;
+          amount?: string;
+        };
         return {
           verified: result.verified,
           status: result.status,
@@ -407,20 +453,19 @@ export class SperaxX402Tools {
     }
 
     // Direct verification via RPC
-    const chain = this.config.network === 'mainnet' ? arbitrum : arbitrumSepolia;
-    const client = createPublicClient({
-      chain,
-      transport: http()
-    });
-
-    const receipt = await client.getTransactionReceipt({
-      hash: transactionHash as Hex
-    });
+    const receipt = await this.provider.getTransactionReceipt(transactionHash);
+    
+    if (!receipt) {
+      return {
+        verified: false,
+        status: 'not_found'
+      };
+    }
 
     return {
-      verified: receipt.status === 'success',
-      status: receipt.status,
-      blockNumber: Number(receipt.blockNumber)
+      verified: receipt.status === 1,
+      status: receipt.status === 1 ? 'success' : 'failed',
+      blockNumber: receipt.blockNumber
     };
   }
 

@@ -8,10 +8,12 @@ import {
   type PublicClient,
   type WalletClient,
   type Address,
+  type Chain,
   parseUnits,
   formatUnits,
   encodeFunctionData,
 } from 'viem';
+import { arbitrum, arbitrumSepolia, base, mainnet, polygon, optimism, bsc } from 'viem/chains';
 import type {
   BatchPaymentItem,
   BatchPaymentResult,
@@ -21,6 +23,16 @@ import type {
 } from '../types';
 import { X402Error, X402ErrorCode } from '../types';
 import { TOKENS, NETWORKS, ERC20_ABI, REVENUE_SPLITTER_ABI } from '../constants';
+
+const VIEM_CHAINS: Record<X402Chain, Chain> = {
+  arbitrum,
+  'arbitrum-sepolia': arbitrumSepolia,
+  base,
+  ethereum: mainnet,
+  polygon,
+  optimism,
+  bsc,
+};
 
 /**
  * Batch payment handler for multiple transfers
@@ -54,6 +66,7 @@ export class BatchPayment {
 
     let totalAmount = BigInt(0);
     let totalGasUsed = BigInt(0);
+    const viemChain = VIEM_CHAINS[this.chain];
 
     for (const item of items) {
       try {
@@ -61,6 +74,8 @@ export class BatchPayment {
         totalAmount += amount;
 
         const hash = await this.walletClient.writeContract({
+          account: this.walletClient.account,
+          chain: viemChain,
           address: tokenConfig.address,
           abi: ERC20_ABI,
           functionName: 'transfer',
@@ -129,6 +144,7 @@ export class BatchPayment {
     const tokenConfig = this.getTokenConfig(token);
     const amountsParsed = amounts.map((a) => parseUnits(a, tokenConfig.decimals));
     const totalAmount = amountsParsed.reduce((sum, a) => sum + a, BigInt(0));
+    const viemChain = VIEM_CHAINS[this.chain];
 
     // First approve the splitter contract
     const allowance = await this.publicClient.readContract({
@@ -140,6 +156,8 @@ export class BatchPayment {
 
     if (allowance < totalAmount) {
       const approveHash = await this.walletClient.writeContract({
+        account: this.walletClient.account,
+        chain: viemChain,
         address: tokenConfig.address,
         abi: ERC20_ABI,
         functionName: 'approve',
@@ -150,6 +168,8 @@ export class BatchPayment {
 
     // Execute batch payment
     const hash = await this.walletClient.writeContract({
+      account: this.walletClient.account,
+      chain: viemChain,
       address: splitterAddress,
       abi: REVENUE_SPLITTER_ABI,
       functionName: 'batchProcessPayments',

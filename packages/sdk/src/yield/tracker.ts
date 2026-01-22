@@ -16,10 +16,11 @@ import { SPERAX_USD_ADDRESS, USDS_ABI, DEFAULTS } from '../constants';
  */
 export class YieldTracker {
   private readonly usdsAddress: Address;
+  #chain: X402Chain;
 
   constructor(
     private readonly publicClient: PublicClient,
-    private readonly chain: X402Chain
+    chain: X402Chain
   ) {
     // Only Arbitrum supports USDs
     if (chain !== 'arbitrum' && chain !== 'arbitrum-sepolia') {
@@ -28,7 +29,15 @@ export class YieldTracker {
         X402ErrorCode.UNSUPPORTED_CHAIN
       );
     }
+    this.#chain = chain;
     this.usdsAddress = SPERAX_USD_ADDRESS;
+  }
+
+  /**
+   * Get the chain this tracker is configured for
+   */
+  get chain(): X402Chain {
+    return this.#chain;
   }
 
   /**

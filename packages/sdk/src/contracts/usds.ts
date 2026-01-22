@@ -4,8 +4,9 @@
  * @license MIT
  */
 
-import type { Address, PublicClient, WalletClient, Hash } from 'viem';
+import type { Address, PublicClient, WalletClient, Hash, Chain } from 'viem';
 import { formatUnits, parseUnits } from 'viem';
+import { arbitrum } from 'viem/chains';
 import { SPERAX_USD_ADDRESS, USDS_ABI, ERC20_ABI } from '../constants';
 import { X402Error, X402ErrorCode } from '../types';
 
@@ -18,6 +19,7 @@ export class USDs {
   public readonly decimals = 18;
   public readonly symbol = 'USDs';
   public readonly name = 'Sperax USD';
+  private readonly chain: Chain = arbitrum;
 
   constructor(
     private readonly publicClient: PublicClient,
@@ -148,6 +150,8 @@ export class USDs {
     const amountParsed = parseUnits(amount, this.decimals);
 
     const hash = await this.walletClient!.writeContract({
+      account: this.walletClient!.account!,
+      chain: this.chain,
       address: this.address,
       abi: ERC20_ABI,
       functionName: 'transfer',
@@ -168,6 +172,8 @@ export class USDs {
     const amountParsed = parseUnits(amount, this.decimals);
 
     const hash = await this.walletClient!.writeContract({
+      account: this.walletClient!.account!,
+      chain: this.chain,
       address: this.address,
       abi: ERC20_ABI,
       functionName: 'approve',
@@ -196,6 +202,8 @@ export class USDs {
     this.requireWallet();
 
     const hash = await this.walletClient!.writeContract({
+      account: this.walletClient!.account!,
+      chain: this.chain,
       address: this.address,
       abi: USDS_ABI,
       functionName: 'transferWithAuthorization',
@@ -214,6 +222,8 @@ export class USDs {
     this.requireWallet();
 
     const hash = await this.walletClient!.writeContract({
+      account: this.walletClient!.account!,
+      chain: this.chain,
       address: this.address,
       abi: USDS_ABI,
       functionName: 'rebaseOptIn',
@@ -232,6 +242,8 @@ export class USDs {
     this.requireWallet();
 
     const hash = await this.walletClient!.writeContract({
+      account: this.walletClient!.account!,
+      chain: this.chain,
       address: this.address,
       abi: USDS_ABI,
       functionName: 'rebaseOptOut',

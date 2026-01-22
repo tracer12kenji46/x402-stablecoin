@@ -8,10 +8,12 @@ import {
   type PublicClient,
   type WalletClient,
   type Address,
+  type Chain,
   parseUnits,
   formatUnits,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
+import { arbitrum, arbitrumSepolia, base, mainnet, polygon, optimism, bsc } from 'viem/chains';
 import type {
   PaymentRequest,
   PaymentTransaction,
@@ -28,6 +30,16 @@ import {
   TRANSFER_WITH_AUTHORIZATION_TYPES,
   DEFAULTS,
 } from '../constants';
+
+const VIEM_CHAINS: Record<X402Chain, Chain> = {
+  arbitrum,
+  'arbitrum-sepolia': arbitrumSepolia,
+  base,
+  ethereum: mainnet,
+  polygon,
+  optimism,
+  bsc,
+};
 
 /**
  * Gasless payment handler using EIP-3009 (transferWithAuthorization)
@@ -157,8 +169,12 @@ export class GaslessPayment {
       );
     }
 
+    const viemChain = VIEM_CHAINS[this.chain];
+
     // Submit the authorization
     const hash = await this.walletClient.writeContract({
+      account: this.walletClient.account,
+      chain: viemChain,
       address: tokenConfig.address,
       abi: EIP3009_ABI,
       functionName: 'transferWithAuthorization',

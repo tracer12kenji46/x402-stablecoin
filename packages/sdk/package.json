@@ -10,29 +10,29 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "require": "./dist/index.cjs",
-      "types": "./dist/index.d.ts"
+      "require": "./dist/index.cjs"
     },
     "./payments": {
+      "types": "./dist/payments/index.d.ts",
       "import": "./dist/payments/index.js",
-      "require": "./dist/payments/index.cjs",
-      "types": "./dist/payments/index.d.ts"
+      "require": "./dist/payments/index.cjs"
     },
     "./http": {
+      "types": "./dist/http/index.d.ts",
       "import": "./dist/http/index.js",
-      "require": "./dist/http/index.cjs",
-      "types": "./dist/http/index.d.ts"
+      "require": "./dist/http/index.cjs"
     },
     "./yield": {
+      "types": "./dist/yield/index.d.ts",
       "import": "./dist/yield/index.js",
-      "require": "./dist/yield/index.cjs",
-      "types": "./dist/yield/index.d.ts"
+      "require": "./dist/yield/index.cjs"
     },
     "./contracts": {
+      "types": "./dist/contracts/index.d.ts",
       "import": "./dist/contracts/index.js",
-      "require": "./dist/contracts/index.cjs",
-      "types": "./dist/contracts/index.d.ts"
+      "require": "./dist/contracts/index.cjs"
     }
   },
   "files": [

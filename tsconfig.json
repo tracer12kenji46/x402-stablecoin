@@ -13,17 +13,28 @@
     "declarationMap": true,
     "sourceMap": true,
     "outDir": "./dist",
-    "rootDir": "./src",
     "baseUrl": ".",
     "paths": {
       "@x402/sdk": ["./packages/sdk/src"],
       "@x402/core": ["./x402"]
     }
   },
+  "include": [
+    "./*.ts"
+  ],
   "exclude": [
     "node_modules",
     "dist",
     "**/node_modules",
-    "**/dist"
+    "**/dist",
+    "cli",
+    "contracts",
+    "examples",
+    "facilitator",
+    "packages",
+    "sperax",
+    "web-app",
+    "x402",
+    "yield-tracker"
   ]
 }

@@ -10,7 +10,7 @@ import { arbitrum } from 'viem/chains';
 import type { PaymentRequest, X402Chain, X402Token } from '../types';
 import { X402Error, X402ErrorCode } from '../types';
 import { HTTP402Handler } from './handler';
-import { NETWORKS, X402_VERSION } from '../constants';
+import { NETWORKS } from '../constants';
 
 /**
  * Express Request type (minimal)

@@ -6,12 +6,34 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
+import type { MessageParam, ContentBlock, TextBlock } from '@anthropic-ai/sdk/resources/messages';
+
+// ============================================
+// Tool Type Definitions for v0.20.x SDK
+// ============================================
+
+interface Tool {
+  name: string;
+  description: string;
+  input_schema: {
+    type: 'object';
+    properties: Record<string, unknown>;
+    required: string[];
+  };
+}
+
+interface ToolUseBlock {
+  type: 'tool_use';
+  id: string;
+  name: string;
+  input: unknown;
+}
 
 // ============================================
 // X402 Tool Definitions
 // ============================================
 
-const x402Tools: Anthropic.Tool[] = [
+const x402Tools: Tool[] = [
   {
     name: 'check_balance',
     description: 'Check USDs balance and yield earned for your wallet',
@@ -144,7 +166,7 @@ async function runAgent() {
 
   const client = new Anthropic({ apiKey });
 
-  const messages: Anthropic.MessageParam[] = [
+  const messages: MessageParam[] = [
     {
       role: 'user',
       content: `You are an AI agent with a USDs wallet for making X402 payments. 
@@ -160,15 +182,14 @@ async function runAgent() {
   let response = await client.messages.create({
     model: 'claude-sonnet-4-20250514',
     max_tokens: 4096,
-    tools: x402Tools,
     messages,
-  });
+  } as Parameters<typeof client.messages.create>[0]);
 
   // Agent loop - handle tool calls
-  while (response.stop_reason === 'tool_use') {
+  while ((response.stop_reason as string) === 'tool_use') {
     const toolUse = response.content.find(
-      (block): block is Anthropic.ToolUseBlock => block.type === 'tool_use'
-    );
+      (block): block is ToolUseBlock => (block as ToolUseBlock).type === 'tool_use'
+    ) as ToolUseBlock | undefined;
 
     if (!toolUse) break;
 
@@ -179,29 +200,28 @@ async function runAgent() {
       toolUse.input as Record<string, unknown>
     );
 
-    messages.push({ role: 'assistant', content: response.content });
+    messages.push({ role: 'assistant', content: response.content as ContentBlock[] });
     messages.push({
       role: 'user',
       content: [
         {
-          type: 'tool_result',
+          type: 'tool_result' as const,
           tool_use_id: toolUse.id,
           content: result,
-        },
+        } as unknown as ContentBlock,
       ],
     });
 
     response = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 4096,
-      tools: x402Tools,
       messages,
-    });
+    } as Parameters<typeof client.messages.create>[0]);
   }
 
   // Print final response
   const textBlock = response.content.find(
-    (block): block is Anthropic.TextBlock => block.type === 'text'
+    (block): block is TextBlock => block.type === 'text'
   );
 
   console.log('\n📋 Agent Report:\n');

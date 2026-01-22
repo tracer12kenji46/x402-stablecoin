@@ -9,9 +9,11 @@ import {
   type WalletClient,
   type Address,
   type Hash,
+  type Chain,
   parseUnits,
   formatUnits,
 } from 'viem';
+import { arbitrum, arbitrumSepolia, base, mainnet, polygon, optimism, bsc } from 'viem/chains';
 import type {
   PaymentRequest,
   PaymentTransaction,
@@ -21,6 +23,16 @@ import type {
 } from '../types';
 import { X402Error, X402ErrorCode } from '../types';
 import { TOKENS, ERC20_ABI, NETWORKS } from '../constants';
+
+const VIEM_CHAINS: Record<X402Chain, Chain> = {
+  arbitrum,
+  'arbitrum-sepolia': arbitrumSepolia,
+  base,
+  ethereum: mainnet,
+  polygon,
+  optimism,
+  bsc,
+};
 
 /**
  * Standard ERC-20 payment handler
@@ -45,6 +57,7 @@ export class StandardPayment {
 
     const tokenConfig = this.getTokenConfig(request.token);
     const amount = parseUnits(request.amount, tokenConfig.decimals);
+    const viemChain = VIEM_CHAINS[this.chain];
 
     // Check balance
     const balance = await this.getBalance(this.walletClient.account.address, request.token);
@@ -61,12 +74,16 @@ export class StandardPayment {
     if (this.isNativeToken(request.token)) {
       // Native token transfer
       hash = await this.walletClient.sendTransaction({
+        account: this.walletClient.account,
+        chain: viemChain,
         to: request.recipient,
         value: amount,
       });
     } else {
       // ERC-20 transfer
       hash = await this.walletClient.writeContract({
+        account: this.walletClient.account,
+        chain: viemChain,
         address: tokenConfig.address,
         abi: ERC20_ABI,
         functionName: 'transfer',
@@ -156,8 +173,11 @@ export class StandardPayment {
     }
 
     const amountParsed = parseUnits(amount, tokenConfig.decimals);
+    const viemChain = VIEM_CHAINS[this.chain];
 
     const hash = await this.walletClient.writeContract({
+      account: this.walletClient.account,
+      chain: viemChain,
       address: tokenConfig.address,
       abi: ERC20_ABI,
       functionName: 'approve',
