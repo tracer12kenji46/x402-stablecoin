@@ -14,7 +14,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "ethers": "^6.0.0"
+    "ethers": "^6.16.0"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",

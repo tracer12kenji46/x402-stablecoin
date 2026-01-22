@@ -5,6 +5,6 @@
  */
 
 export * from './services/sperax';
-export * from './tools/sperax';
 export * from './tools/x402-tools';
 export { createMCPHandler, speraxToolDefinitions, SperaxX402Tools } from './tools/x402-tools';
+
